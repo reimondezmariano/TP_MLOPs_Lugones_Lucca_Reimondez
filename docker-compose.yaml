@@ -98,8 +98,11 @@ services:
 
   redis:
     image: valkey/valkey:8.1-bookworm
-    expose:
-      - 6379
+    # Celery usa la base 0; las predicciones por lotes van en la base 1.
+    # El puerto se publica para que el flujo de Metaflow y la notebook
+    # lleguen desde el host.
+    ports:
+      - "${VALKEY_PORT:-6379}:6379"
     networks:
       - backend
     healthcheck:
@@ -153,6 +156,7 @@ services:
       /usr/bin/mc alias set s3 http://s3:9000 ${MINIO_ACCESS_KEY:?Falta MINIO_ACCESS_KEY en el .env} ${MINIO_SECRET_ACCESS_KEY:?Falta MINIO_SECRET_ACCESS_KEY en el .env};
       /usr/bin/mc mb s3/${MLFLOW_BUCKET_NAME:-mlflow};
       /usr/bin/mc mb s3/${DATA_REPO_BUCKET_NAME:-data};
+      /usr/bin/mc mb s3/${BATCH_BUCKET_NAME:-batch};
       exit 0;
       '
 

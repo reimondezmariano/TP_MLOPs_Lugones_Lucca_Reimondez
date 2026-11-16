@@ -1,0 +1,18 @@
+# Python 3.13: la versión que fija el docente (.python-version de amq2-service-ml)
+# Versiones: las del uv.lock del docente (rama example_implementation), más missingno y statsmodels, que usa el TP.
+numpy==2.5.3
+pandas==3.0.6
+scipy==1.18.1
+scikit-learn==1.9.1
+matplotlib==3.11.2
+seaborn==0.13.2
+pyarrow==25.0.1
+joblib==1.6.0
+optuna==5.0.0
+mlflow==3.16.1
+awswrangler==3.17.1
+boto3==1.43.103
+jupyter==1.1.1
+ipykernel==7.3.0
+missingno==0.5.2
+statsmodels==0.15.0

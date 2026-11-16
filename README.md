@@ -12,7 +12,7 @@ Un reingreso hospitalario dentro de los 30 días posteriores al alta suele indic
 
 Usamos el dataset *Diabetes 130-US Hospitals (1999-2008)* de UCI, con unas 100.000 internaciones de pacientes diabéticos. El objetivo es predecir si un paciente vuelve a internarse en menos de 30 días.
 
-El modelo viene del trabajo de Aprendizaje de Máquina I: un Random Forest sobre 18 variables, con un umbral de decisión de 0,15 elegido para priorizar la detección de reingresos. En este trabajo lo llevamos a un servicio que se entrena, se registra y se sirve de forma reproducible.
+El modelo viene del trabajo de Aprendizaje de Máquina I: un Random Forest sobre 18 variables, con un umbral de decisión de 0,14 elegido para priorizar la detección de reingresos. En este trabajo lo llevamos a un servicio que se entrena, se registra y se sirve de forma reproducible.
 
 ## Qué hace el servicio
 
@@ -161,8 +161,9 @@ Airflow crea estos entornos con `uv`. El `docker-compose.yaml` define `UV_CACHE_
 ## Estructura del repositorio
 
 ```
-airflow/dags/               DAGs: etl_diabetes, retrain_model, batch_predict
+airflow/dags/               DAGs: etl_diabetes, retrain_model
 airflow/secrets/            variables.yaml y connections.yaml
+batch/                      predicción por lotes con Metaflow y consulta en Valkey
 experiments/                búsqueda de hiperparámetros
 dockerfiles/                imágenes de Airflow, MLflow, Postgres y FastAPI
 dockerfiles/fastapi/files/  copia de respaldo del modelo y de data.json

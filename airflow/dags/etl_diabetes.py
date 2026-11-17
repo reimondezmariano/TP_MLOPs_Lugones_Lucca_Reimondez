@@ -77,7 +77,7 @@ def etl_diabetes():
 
     @task.virtualenv(
         task_id="limpiar_y_crear_variables",
-        requirements=["pandas", "pyarrow", "boto3"],
+        requirements=["pandas", "pyarrow<26", "boto3"],
         system_site_packages=True,
     )
     def limpiar_y_crear_variables(ruta_raw: str) -> str:
@@ -247,8 +247,93 @@ def etl_diabetes():
         print(f"Datos limpios guardados en {ruta}")
         return ruta
 
+    @task(task_id="leer_parametros")
+    def leer_parametros() -> dict:
+        """Lee de las variables de Airflow los parametros del split.
+
+        Returns:
+            Diccionario con test_size y la semilla.
+        """
+        from airflow.sdk import Variable
+
+        # Los valores por defecto son los de la notebook, por si variables.yaml no los define.
+        return {
+            "test_size": float(Variable.get("test_size", default="0.30")),
+            "semilla": int(Variable.get("random_seed", default="42")),
+        }
+
+    @task.virtualenv(
+        task_id="separar_train_test",
+        requirements=["pandas", "pyarrow<26", "boto3", "scikit-learn==1.9.1"],
+        system_site_packages=True,
+    )
+    def separar_train_test(ruta_limpio: str, parametros: dict) -> dict:
+        """Separa train y test por paciente y guarda los datos procesados (seccion 2.2).
+
+        Los valores se guardan sin recortar: el recorte en el percentil 99 lo hace
+        el preprocesador del modelo, ajustado solo con train.
+
+        Args:
+            ruta_limpio: ruta en S3 del Parquet con los datos limpios.
+            parametros: test_size y semilla leidos de las variables de Airflow.
+
+        Returns:
+            Rutas en S3 de train y test.
+        """
+        import io
+
+        import boto3
+        import pandas as pd
+        from sklearn.model_selection import GroupShuffleSplit
+
+        s3 = boto3.client("s3")
+        bucket, key_limpio = ruta_limpio.replace("s3://", "").split("/", 1)
+        objeto = s3.get_object(Bucket=bucket, Key=key_limpio)
+        datos = pd.read_parquet(io.BytesIO(objeto["Body"].read()))
+
+        # Agrupado por paciente: un mismo paciente nunca queda en train y en test.
+        gss = GroupShuffleSplit(n_splits=1, test_size=parametros["test_size"],
+                                random_state=parametros["semilla"])
+        idx_train, idx_test = next(gss.split(datos, groups=datos["patient_nbr"]))
+        train = datos.iloc[idx_train].copy()
+        test = datos.iloc[idx_test].copy()
+
+        pacientes_en_ambos = set(train["patient_nbr"]) & set(test["patient_nbr"])
+        assert len(pacientes_en_ambos) == 0, "Hay pacientes en train y en test"
+
+        # Las 18 variables de la seccion 6.3 y patient_nbr como ultima columna de entrada:
+        # el modelo la usa solo para agrupar por paciente en el target encoding.
+        variables = [
+            "number_inpatient_disc", "patient_nbr_ordinal", "discharge_disposition_id",
+            "number_diagnoses", "number_emergency_disc", "num_lab_procedures",
+            "time_in_hospital", "medical_specialty", "num_medications", "familia_insulina",
+            "age", "diag_1", "payer_code", "diag_3", "diag_2", "admission_source_id",
+            "familia_biguanidas", "A1Cresult",
+        ]
+        columnas = variables + ["patient_nbr", "readmitted_temprano"]
+        train = train[columnas].reset_index(drop=True)
+        test = test[columnas].reset_index(drop=True)
+
+        print(f"Train: {len(train)} filas ({len(train) / len(datos) * 100:.1f} %), "
+              f"{train['patient_nbr'].nunique()} pacientes")
+        print(f"Test: {len(test)} filas ({len(test) / len(datos) * 100:.1f} %)")
+        print(f"Tasa de reingreso temprano: train {train['readmitted_temprano'].mean() * 100:.2f} %, "
+              f"test {test['readmitted_temprano'].mean() * 100:.2f} %")
+
+        rutas = {}
+        for nombre, tabla in [("train", train), ("test", test)]:
+            key = f"processed/{nombre}.parquet"
+            buffer = io.BytesIO()
+            tabla.to_parquet(buffer, index=False)
+            s3.put_object(Bucket=bucket, Key=key, Body=buffer.getvalue())
+            rutas[nombre] = f"s3://{bucket}/{key}"
+            print(f"{nombre} guardado en {rutas[nombre]}")
+
+        return rutas
+
     ruta_raw = obtener_datos_originales()
-    limpiar_y_crear_variables(ruta_raw)
+    ruta_limpio = limpiar_y_crear_variables(ruta_raw)
+    separar_train_test(ruta_limpio, leer_parametros())
 
 
 etl_diabetes()

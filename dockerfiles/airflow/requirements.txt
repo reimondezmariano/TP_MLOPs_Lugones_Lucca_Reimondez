@@ -1,2 +1,5 @@
-mlflow[extras]>=3.15
+# scikit-learn y MLflow fijados en las mismas versiones que requirements-experimentos.txt
+# y que la imagen de FastAPI: un modelo guardado con otra versión puede no cargar.
+mlflow[extras]==3.16.1
+scikit-learn==1.9.1
 boto3~=1.34

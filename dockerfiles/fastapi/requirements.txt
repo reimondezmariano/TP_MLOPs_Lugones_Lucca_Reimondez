@@ -1,2 +1,7 @@
 fastapi>=0.116
 uvicorn>=0.27
+# scikit-learn y MLflow fijados en las mismas versiones que requirements-experimentos.txt
+# y que la imagen de Airflow: un modelo guardado con otra versión puede no cargar.
+mlflow==3.16.1
+scikit-learn==1.9.1
+boto3~=1.34

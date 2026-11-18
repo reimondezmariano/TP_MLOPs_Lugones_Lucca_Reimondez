@@ -1,0 +1,14 @@
+# Parametros generales del proyecto. Los mismos valores que airflow/secrets/variables.yaml.
+
+seed: 42
+test_size: 0.30
+
+objetivo:
+  # Reingreso en menos de 30 dias, creado por el DAG etl_diabetes.
+  columna: readmitted_temprano
+
+rutas:
+  # Copia local de los datos procesados, relativa a la raiz del repo.
+  datos_procesados: data/processed
+  # Donde los deja el DAG etl_diabetes en MinIO.
+  datos_procesados_s3: s3://data/processed

@@ -47,3 +47,9 @@ one_hot:
   referencia:
     variable: familia_biguanidas
     categoria: Steady
+
+# Regla basal (seccion 8.1): al menos k internaciones previas implica reingreso.
+# Los niveles van de menor a mayor riesgo; k se calcula con el train.
+basal:
+  variable: number_inpatient_disc
+  niveles: ["0", "1", "2", "3 o mas"]

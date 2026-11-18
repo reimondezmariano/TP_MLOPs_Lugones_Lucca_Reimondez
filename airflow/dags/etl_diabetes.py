@@ -16,6 +16,9 @@ markdown_text = """
    de UCI y lo guarda sin cambios en `s3://data/raw/diabetic_data.csv`.
 2. Limpia los datos y arma las variables nuevas con las reglas que no dependen del split,
    y deja el resultado en `s3://data/interim/diabetic_limpio.parquet`.
+3. Separa train y test agrupando por paciente y los guarda en `s3://data/processed`.
+4. Guarda la descripcion de los datos en `s3://data/data_info/data.json` y registra
+   el linaje del dataset en MLflow.
 """
 
 default_args = {
@@ -252,7 +255,7 @@ def etl_diabetes():
         """Lee de las variables de Airflow los parametros del split.
 
         Returns:
-            Diccionario con test_size y la semilla.
+            Diccionario con test_size, la semilla, la ruta del data.json y los datos de MLflow.
         """
         from airflow.sdk import Variable
 
@@ -260,6 +263,9 @@ def etl_diabetes():
         return {
             "test_size": float(Variable.get("test_size", default="0.30")),
             "semilla": int(Variable.get("random_seed", default="42")),
+            "data_info_path": Variable.get("data_info_path", default="s3://data/data_info/data.json"),
+            "mlflow_tracking_uri": Variable.get("mlflow_tracking_uri", default="http://mlflow:5000"),
+            "mlflow_experiment_name": Variable.get("mlflow_experiment_name", default="reingreso_diabetes"),
         }
 
     @task.virtualenv(
@@ -331,9 +337,99 @@ def etl_diabetes():
 
         return rutas
 
+    @task.virtualenv(
+        task_id="registrar_info_y_linaje",
+        requirements=["pandas", "pyarrow<26", "boto3", "mlflow==3.16.1"],
+        system_site_packages=True,
+    )
+    def registrar_info_y_linaje(rutas: dict, parametros: dict) -> str:
+        """Guarda la descripcion de los datos procesados y registra el linaje en MLflow.
+
+        El data.json describe las columnas de entrada del modelo: tipos y categorias
+        vistas en train. Lo usan el reentrenamiento y la API para validar lo que reciben.
+
+        Args:
+            rutas: rutas en S3 de train y test.
+            parametros: parametros leidos de las variables de Airflow.
+
+        Returns:
+            Ruta en S3 del data.json.
+        """
+        import datetime
+        import io
+        import json
+
+        import boto3
+        import mlflow
+        import pandas as pd
+
+        s3 = boto3.client("s3")
+        tablas = {}
+        for nombre, ruta in rutas.items():
+            bucket, key = ruta.replace("s3://", "").split("/", 1)
+            objeto = s3.get_object(Bucket=bucket, Key=key)
+            tablas[nombre] = pd.read_parquet(io.BytesIO(objeto["Body"].read()))
+        train, test = tablas["train"], tablas["test"]
+
+        objetivo = "readmitted_temprano"
+        id_grupo = "patient_nbr"
+        entradas = train.drop(columns=[objetivo])
+        numericas = [c for c in entradas.columns
+                     if c != id_grupo and pd.api.types.is_numeric_dtype(entradas[c])]
+        categoricas = [c for c in entradas.columns
+                       if c != id_grupo and c not in numericas]
+
+        fecha = datetime.datetime.now().strftime("%Y/%m/%d-%H:%M:%S")
+        info = {
+            "columnas": entradas.columns.to_list(),
+            "columna_objetivo": objetivo,
+            "id_grupo": id_grupo,
+            "columnas_numericas": numericas,
+            "columnas_categoricas": categoricas,
+            "tipos": {c: str(t) for c, t in entradas.dtypes.items()},
+            "categorias": {c: sorted(entradas[c].astype(str).unique().tolist())
+                           for c in categoricas},
+            "filas_train": len(train),
+            "filas_test": len(test),
+            "tasa_reingreso_train": round(float(train[objetivo].mean()), 4),
+            "tasa_reingreso_test": round(float(test[objetivo].mean()), 4),
+            "test_size": parametros["test_size"],
+            "semilla": parametros["semilla"],
+            "fecha": fecha,
+        }
+
+        bucket_info, key_info = parametros["data_info_path"].replace("s3://", "").split("/", 1)
+        s3.put_object(Bucket=bucket_info, Key=key_info,
+                      Body=json.dumps(info, indent=2, ensure_ascii=False).encode("utf-8"))
+        print(f"data.json guardado en {parametros['data_info_path']}")
+
+        # Linaje: deja registrado en MLflow con que datos se va a entrenar.
+        mlflow.set_tracking_uri(parametros["mlflow_tracking_uri"])
+        experimento = mlflow.set_experiment(parametros["mlflow_experiment_name"])
+        fuente = "https://archive.ics.uci.edu/dataset/296/diabetes+130-us+hospitals+for+years+1999-2008"
+        with mlflow.start_run(run_name=f"ETL_run_{fecha}",
+                              experiment_id=experimento.experiment_id,
+                              tags={"experiment": "etl", "dataset": "Diabetes 130-US Hospitals"}):
+            for nombre, tabla in [("train", train), ("test", test)]:
+                dataset = mlflow.data.from_pandas(tabla, source=fuente, targets=objetivo,
+                                                  name=f"diabetes_{nombre}")
+                mlflow.log_input(dataset, context=nombre)
+            mlflow.log_params({
+                "test_size": parametros["test_size"],
+                "semilla": parametros["semilla"],
+                "filas_train": len(train),
+                "filas_test": len(test),
+                "pacientes_train": int(train[id_grupo].nunique()),
+            })
+            mlflow.log_dict(info, "data_info/data.json")
+
+        return parametros["data_info_path"]
+
+    parametros = leer_parametros()
     ruta_raw = obtener_datos_originales()
     ruta_limpio = limpiar_y_crear_variables(ruta_raw)
-    separar_train_test(ruta_limpio, leer_parametros())
+    rutas = separar_train_test(ruta_limpio, parametros)
+    registrar_info_y_linaje(rutas, parametros)
 
 
 etl_diabetes()

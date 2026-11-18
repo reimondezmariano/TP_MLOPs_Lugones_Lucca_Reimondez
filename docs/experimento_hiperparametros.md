@@ -8,9 +8,11 @@ Sigue el esquema del experimento de la cátedra (`notebook_example/experiment_ml
 `example_implementation`): datos desde MinIO con `awswrangler`, Optuna con un run padre y un run anidado por
 intento, modelo guardado con `cloudpickle` y firma, y un registro en dos pasos (`_dev` y `_prod`).
 
-La configuración **no se puede cambiar desde la línea de comandos**: 30 intentos, 300 árboles, todo el train y 5 folds
-agrupados por paciente. Es la de la notebook `notebooks/TP_FINAL_OAA/TP_FINAL_OAA.ipynb`, que parte de la del TP de Aprendizaje de Máquina (60 intentos y 500
-árboles) con menos intentos y árboles para acortar el tiempo (D10).
+La configuración por defecto es 30 intentos, 300 árboles, todo el train y 5 folds agrupados por paciente. Es la de la
+notebook `notebooks/TP_FINAL_OAA/TP_FINAL_OAA.ipynb`, que parte de la del TP de Aprendizaje de Máquina (60 intentos y 500
+árboles) con menos intentos y árboles para acortar el tiempo. Para acortarlo todavía más, la cantidad de intentos y la
+fracción del train que se usa se pueden cambiar desde la línea de comandos (`--intentos` y `--submuestreo`); los árboles y
+los folds quedan fijos.
 
 ## Qué problema resuelve
 
@@ -73,8 +75,23 @@ python experiments/hyperparam_search.py --tracking-uri sqlite:///mlflow_local.db
 | `--train` | train de `configs/base.yaml` | Parquet de train, ruta local o `s3://`. |
 | `--test` | `test.parquet` junto al train | Parquet de test. |
 | `--tracking-uri` | `MLFLOW_TRACKING_URI` o `http://localhost:5001` | Servidor de MLflow. |
+| `--intentos` | 30 | Cantidad de evaluaciones de la búsqueda con Optuna. |
+| `--submuestreo` | 1 | Fracción de los pacientes del train que se usa, entre 0 y 1. Con 1 se usa todo el train. |
 | `--experimento` | `reingreso_diabetes` | Nombre del experimento. |
 | `--nombre-modelo` | `reingreso_diabetes_rf` | Prefijo en el registro: se crean `<nombre>_dev` y `<nombre>_prod`. |
+
+**Corrida corta.** Para probar el flujo completo sin esperar los 4 minutos, o en una máquina con pocos núcleos:
+
+```bash
+python experiments/hyperparam_search.py --train s3://data/processed/train.parquet --intentos 10 --submuestreo 0.5
+```
+
+El submuestreo elige pacientes al azar (con la semilla del proyecto) y se queda con todos sus encuentros, para que los folds
+sigan agrupados por paciente. Se aplica a la búsqueda y al reentrenamiento final: el modelo que queda como `champion`
+se entrenó con menos datos. Por eso sus métricas no son comparables con las de la notebook, y el run padre guarda
+`n_intentos` y `submuestreo` para que se vea con qué se corrió. El test se mide siempre completo. Con los valores por
+defecto no cambia nada. Una corrida de 3 intentos con el 30 % de los pacientes (21.488 filas) tardó 18 segundos contra una
+base SQLite local.
 
 Las credenciales y el servidor de MinIO se toman del entorno (las mismas variables que usa el stack), nunca de
 argumentos ni del código. Si falta `AWS_ENDPOINT_URL_S3`, se copia de `MLFLOW_S3_ENDPOINT_URL`.
@@ -154,4 +171,6 @@ probabilidad = modelo.predict_proba(X)[:, 1]
 - Probado con la configuración actual (30 intentos y 300 árboles) contra el stack de la cátedra en Docker, con los datos leídos
   desde `s3://data/processed/`: 4 min 8 s, 30 runs anidados y `champion` registrado, con ROC-AUC de 0,6806 en validación
   cruzada y de 0,6774 en el test.
+- Opciones `--intentos` y `--submuestreo`: probadas con una base SQLite local, con valores inválidos (se rechazan con un mensaje),
+  con 3 intentos y el 30 % de los pacientes, y con la corrida completa por defecto, que da el mismo resultado que antes.
 - No probado en la Mac del docente.

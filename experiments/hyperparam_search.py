@@ -15,9 +15,14 @@ Qué hace:
     5. Mide el modelo en el test (solo se informa; no participa en la elección) y lo promueve a `<nombre>_prod`
        con el alias `champion`, el umbral de decisión como tag y la curva de calibración como artefacto.
 
-La configuración no se cambia desde la línea de comandos: espacio de búsqueda de M5 de la notebook, 300 árboles, todo el
-train y 5 folds agrupados por paciente, como en el TP. Las evaluaciones con Optuna (TPE, semilla 42) son 30 y no las 60 del
-TP, para acortar el tiempo (D10): el ROC-AUC queda igual, pero los hiperparámetros ganadores pueden diferir.
+Configuración por defecto: espacio de búsqueda de M5 de la notebook, 300 árboles, todo el train y 5 folds agrupados por
+paciente. Las evaluaciones con Optuna (TPE, semilla 42) son 30 y no las 60 del TP, para acortar el tiempo: el ROC-AUC queda
+igual, pero los hiperparámetros ganadores pueden diferir. Para acortar todavía más el tiempo (por ejemplo, en una máquina
+con pocos núcleos) se pueden cambiar dos cosas desde la línea de comandos:
+    --intentos N        cantidad de evaluaciones de Optuna (por defecto 30)
+    --submuestreo F     fracción de los pacientes del train que se usa, entre 0 y 1 (por defecto 1, todo el train)
+Con el submuestreo la búsqueda y el modelo registrado usan menos datos, así que sus métricas no son comparables con las de
+la notebook; el test se mide siempre completo. Con los valores por defecto el resultado es el mismo de siempre.
 
 Variables de entorno (las mismas que usa el stack de la cátedra; van en el .env, nunca en el código):
     AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY   credenciales de MinIO
@@ -30,6 +35,9 @@ Ejemplos:
 
     # sin Docker: base SQLite local y archivos locales
     python experiments/hyperparam_search.py --tracking-uri sqlite:///mlflow_local.db
+
+    # corrida corta: 10 intentos con la mitad de los pacientes del train
+    python experiments/hyperparam_search.py --train s3://data/processed/train.parquet --intentos 10 --submuestreo 0.5
 """
 import argparse
 import datetime
@@ -76,9 +84,9 @@ log = logging.getLogger("hyperparam_search")
 TRACKING_POR_DEFECTO = "http://localhost:5001"
 
 # Espacio de búsqueda del notebook 03 (M5) para Random Forest.
-# n_estimators no se busca: es una perilla de costo (--n-arboles), igual que en la notebook (300 fijo).
-# Configuración del TP (notebook 03, M5): no se cambia desde la línea de comandos.
-N_INTENTOS = 30  # evaluaciones de la búsqueda (el TP usó 60; ver D10)
+# n_estimators no se busca: es una perilla de costo y queda fijo en configs/model.yaml (300), igual que en la notebook.
+# Configuración del TP (notebook 03, M5).
+N_INTENTOS = 30  # evaluaciones de la búsqueda por defecto (el TP usó 60); se cambia con --intentos
 N_FOLDS = 5      # folds de la validación cruzada
 
 ESPACIO = {
@@ -156,6 +164,28 @@ def callback_campeon(estudio: optuna.Study, intento: optuna.trial.FrozenTrial) -
             mejora = abs(anterior - estudio.best_value) / estudio.best_value * 100
             log.info("intento %d: nuevo mejor ROC-AUC %.4f (mejora de %.4f %%)", intento.number + 1,
                      intento.value, mejora)
+
+
+def submuestrear_pacientes(train: pd.DataFrame, fraccion: float, semilla: int) -> pd.DataFrame:
+    """Se queda con una fracción de los pacientes del train, con todos sus encuentros.
+
+    Se submuestrea por paciente y no por fila para que un mismo paciente no quede partido entre las filas que se
+    conservan y las que no: los folds de la validación cruzada siguen agrupados por paciente.
+
+    Args:
+        train: tabla de train, con la columna `patient_nbr`.
+        fraccion: fracción de pacientes a conservar, mayor que 0 y hasta 1. Con 1 devuelve el train sin cambios.
+        semilla: semilla del sorteo de pacientes.
+
+    Returns:
+        Tabla con los encuentros de los pacientes elegidos, en el orden original.
+    """
+    if fraccion >= 1:
+        return train
+    pacientes = train["patient_nbr"].unique()
+    azar = np.random.RandomState(semilla)
+    elegidos = azar.choice(pacientes, size=max(1, int(round(len(pacientes) * fraccion))), replace=False)
+    return train[train["patient_nbr"].isin(elegidos)].reset_index(drop=True)
 
 
 def preparar_folds(train: pd.DataFrame, objetivo: str, feat: dict, semilla: int, n_folds: int) -> list:
@@ -268,7 +298,15 @@ def main(argv=None) -> None:
     ap.add_argument("--experimento", default="reingreso_diabetes")
     ap.add_argument("--nombre-modelo", default="reingreso_diabetes_rf",
                     help="prefijo del nombre en el Model Registry; se crean <nombre>_dev y <nombre>_prod")
+    ap.add_argument("--intentos", type=int, default=N_INTENTOS,
+                    help=f"evaluaciones de la búsqueda con Optuna (por defecto {N_INTENTOS}, como el TP con menos intentos)")
+    ap.add_argument("--submuestreo", type=float, default=1.0,
+                    help="fracción de los pacientes del train que se usa, mayor que 0 y hasta 1 (por defecto 1: todo el train)")
     args = ap.parse_args(argv)
+    if args.intentos < 1:
+        ap.error("--intentos tiene que ser al menos 1")
+    if not 0 < args.submuestreo <= 1:
+        ap.error("--submuestreo tiene que ser mayor que 0 y no más de 1")
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     warnings.filterwarnings("ignore")
@@ -283,6 +321,10 @@ def main(argv=None) -> None:
     ruta_test = args.test or ruta_train.replace("train.parquet", "test.parquet")
     train = leer_parquet(ruta_train)
     log.info("train: %d filas, %.2f %% reingresos", len(train), 100 * train[objetivo].mean())
+    if args.submuestreo < 1:
+        train = submuestrear_pacientes(train, args.submuestreo, semilla)
+        log.info("submuestreo %.2f de los pacientes: %d filas, %.2f %% reingresos", args.submuestreo, len(train),
+                 100 * train[objetivo].mean())
 
     uri = args.tracking_uri or os.environ.get("MLFLOW_TRACKING_URI") or TRACKING_POR_DEFECTO
     mlflow.set_tracking_uri(uri)
@@ -297,7 +339,7 @@ def main(argv=None) -> None:
 
     nombre_padre = "best_hyperparam_" + datetime.datetime.today().strftime("%Y/%m/%d-%H:%M:%S")
     with mlflow.start_run(experiment_id=id_experimento, run_name=nombre_padre) as padre:
-        mlflow.log_params({"n_intentos": N_INTENTOS, "n_arboles": n_arboles,
+        mlflow.log_params({"n_intentos": args.intentos, "n_arboles": n_arboles, "submuestreo": args.submuestreo,
                            "n_folds": N_FOLDS, "semilla": semilla, "filas_train": len(train), "umbral": umbral})
         mlflow.set_tags({"project": "Readmision Diabetes", "optimizer_engine": "optuna",
                          "model_family": "sklearn", "feature_set_version": 1})
@@ -318,13 +360,13 @@ def main(argv=None) -> None:
                 mlflow.log_params(params)
                 mlflow.log_metrics({"auc_media": aucs.mean(), "auc_desvio": aucs.std(ddof=1),
                                     "segundos": time.perf_counter() - t0})
-            log.info("intento %d/%d | AUC %.4f ± %.4f | %s", trial.number + 1, N_INTENTOS, aucs.mean(),
+            log.info("intento %d/%d | AUC %.4f ± %.4f | %s", trial.number + 1, args.intentos, aucs.mean(),
                      aucs.std(ddof=1), params)
             if aucs.mean() > mejor["auc"]:
                 mejor.update(auc=float(aucs.mean()), desvio=float(aucs.std(ddof=1)), oof=oof)
             return float(aucs.mean())
 
-        estudio.optimize(objetivo_optuna, n_trials=N_INTENTOS, callbacks=[callback_campeon])
+        estudio.optimize(objetivo_optuna, n_trials=args.intentos, callbacks=[callback_campeon])
 
         # Mejor combinación: métricas fuera de fold, reentrenamiento con todo el train y registro.
         p = estudio.best_params

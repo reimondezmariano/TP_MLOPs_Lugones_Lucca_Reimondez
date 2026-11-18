@@ -163,4 +163,6 @@ cython_debug/
 .DS_store
 
 CLAUDE.md
+.claude/*:Zone.Identifier
+.vscode/
 .claude/

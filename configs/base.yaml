@@ -12,3 +12,7 @@ rutas:
   datos_procesados: data/processed
   # Donde los deja el DAG etl_diabetes en MinIO.
   datos_procesados_s3: s3://data/processed
+
+evaluacion:
+  # Remuestreos por paciente para los intervalos de confianza del test (M9 de la notebook).
+  n_bootstrap: 1000

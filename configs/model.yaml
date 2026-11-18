@@ -1,0 +1,19 @@
+# Hiperparámetros ganadores de la carrera de M5 de la notebook notebooks/TP_FINAL_OAA/TP_FINAL_OAA.ipynb (30 evaluaciones por mecanismo, Random
+# Forest de 300 árboles) y umbrales de M6, solo para los dos algoritmos que se conservan (regresión logística y Random Forest).
+# El pipeline los aplica; re-buscarlos es experiments/hyperparam_search.py.
+elegido: Random Forest
+
+modelos:
+  "Regresión logística":
+    C: 0.010051981180656781
+    l1_ratio: 1.0
+  "Random Forest":
+    n_estimators: 300
+    max_features: 0.3
+    min_samples_leaf: 30
+    max_depth: 16
+
+# Umbral de decisión de cada modelo (máximo F1 fuera de fold sobre todo el train, M6)
+umbrales:
+  "Regresión logística": 0.13
+  "Random Forest": 0.14

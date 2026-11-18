@@ -1,0 +1,11 @@
+# Todo lo necesario para correr los scripts de experiments/ (búsqueda de hiperparámetros, comparación de modelos y
+# reentrenamiento champion/challenger). Versiones del uv.lock de la cátedra (rama example_implementation, Python 3.13).
+numpy==2.5.3
+pandas==3.0.6
+scikit-learn==1.9.1
+pyarrow==25.0.1
+mlflow==3.16.1
+awswrangler==3.17.1
+optuna==5.0.0
+matplotlib==3.11.2
+boto3==1.43.103

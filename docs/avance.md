@@ -120,6 +120,5 @@ Esto define la parte de la API para la final:
 ## Sistemas en los que se probó
 
 - Ubuntu en WSL2 (Windows), Docker Desktop.
+- macOS, Docker Desktop: el ETL, el paquete `readmission` y la infraestructura.
 - Python 3.13 con las versiones de la cátedra (MLflow 3.16.1, scikit-learn 1.9.1, Optuna 5.0.0, awswrangler 3.17.1) para los scripts de `experiments/`.
-
-PENDIENTE: Carlos y Florencia confirman su sistema operativo. Ninguno de los tres probó todavía en macOS.

@@ -12,7 +12,7 @@ Elegimos el nivel en contenedores. Para la parcial nos concentramos en el pipeli
 | README (primera versión) | Mariano | Terminado |
 | DAG de ETL `etl_diabetes` y paquete `readmission` | Florencia | Terminado |
 | Búsqueda de hiperparámetros en MLflow y modelo `champion` | Carlos | Terminado |
-| Regla basal en el paquete | Florencia | Adelantado para la final |
+| Regla basal en el paquete | Florencia | Terminado (adelantado de la final) |
 | API REST | Mariano | Para la final |
 | Reentrenamiento champion/challenger | Carlos | Para la final |
 | Predicción por lotes con Metaflow y Valkey | Carlos | Para la final, con la infraestructura ya preparada |
@@ -29,7 +29,7 @@ Elegimos el nivel en contenedores. Para la parcial nos concentramos en el pipeli
 - DAG `check_virtualenv` para verificar la instalación: lee las variables, crea entornos virtuales en el worker de Celery y escribe y lee un Parquet en MinIO pasando solo la ruta por XCom.
 - Valkey para la predicción por lotes: en lugar de sumar un contenedor, se reutiliza el que ya usa Celery, con una base aparte (Celery usa la 0 y las predicciones la 1). Se publica su puerto y se crea el bucket `batch` en MinIO.
 - Primera versión del README: problema, diagrama de bloques, guía de instalación y configuración.
-- Revisión de los pull requests de la búsqueda de hiperparámetros y del paquete.
+- Revisión del pull request de la búsqueda de hiperparámetros.
 
 Problemas encontrados y cómo se resolvieron:
 
@@ -43,7 +43,7 @@ Problemas encontrados y cómo se resolvieron:
 - Al final del DAG deja la descripción de los datos en `data.json` y registra el linaje del dataset en MLflow.
 - Script en `tests/` que verifica que train y test coinciden con la descripción de `data.json`.
 - Paquete `readmission` con la configuración y el preprocesador de las 18 variables, que usan la búsqueda de hiperparámetros y el reentrenamiento.
-- Adelantado para la final: la regla basal de internaciones previas en el paquete, para la comparación de modelos.
+- Regla basal de internaciones previas en el paquete, adelantada de la final: Carlos la probó con la comparación de modelos y da lo mismo que la notebook (0,606 en validación cruzada y 0,603 en test).
 
 ### Carlos: modelo y ciclo de vida
 
@@ -114,7 +114,7 @@ Esto define la parte de la API para la final:
 | Semana | Qué hacemos |
 |---|---|
 | 23/11 al 29/11 | API después de la clase 6: carga del champion, validación de las 18 variables con Pydantic, `/docs` descriptivo y la imagen con el paquete `readmission`. Predicción por lotes con Metaflow sobre el MinIO y el Valkey del grupo |
-| 30/11 al 6/12 | Script y DAG `retrain_model` champion/challenger, comparación de modelos (`compare_models.py`), frontend en Streamlit y tests de la API |
+| 30/11 al 6/12 | Script y DAG `retrain_model` champion/challenger, comparación de modelos (`compare_models.py`), frontend en Streamlit, tests de la API, aserciones de validación dentro del DAG `etl_diabetes` y raw con fecha de la corrida para no pisar las anteriores |
 | 7/12 al 13/12 | Sin desarrollo nuevo: secciones del README sobre los datos y el modelo, prueba en un clon limpio siguiendo el README, ajustes y consulta del 9/12 |
 
 ## Sistemas en los que se probó

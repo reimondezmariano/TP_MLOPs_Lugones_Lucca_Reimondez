@@ -1,6 +1,6 @@
 # Reingreso hospitalario de pacientes diabéticos: servicio de ML
 
-Trabajo práctico de Aprendizaje de Máquina II (CEIA, FIUBA).
+Trabajo práctico de Operaciones de Aprendizaje Automático I (CEIA, FIUBA).
 
 Integrantes: Carlos Lugones, Florencia Lucca  y Mariano Reimondez.
 

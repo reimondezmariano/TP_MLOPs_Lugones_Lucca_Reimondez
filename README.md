@@ -2,7 +2,7 @@
 
 Trabajo práctico de Aprendizaje de Máquina II (CEIA, FIUBA).
 
-Integrantes: Carlos, Florencia y Mariano.
+Integrantes: Carlos Lugones, Florencia Lucca  y Mariano Reimondez.
 
 Este repositorio parte de [amq2-service-ml](https://github.com/facundolucianna/amq2-service-ml) de Facundo Lucianna, distribuido bajo la licencia incluida en [LICENSE](LICENSE).
 
